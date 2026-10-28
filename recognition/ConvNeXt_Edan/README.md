@@ -1,0 +1,83 @@
+Alzheimer’s Disease Classification Using ConvNeXt
+
+Course: COMP3710 — Pattern Recognition
+Author: Edan Zhao
+Difficulty: Hard
+Framework: PyTorch
+Status: In Development
+
+1. Project Overview
+
+This project investigates the use of ConvNeXt, a modern convolutional neural network architecture, for classifying Alzheimer’s Disease (AD) and Cognitively Normal (CN) subjects using structural brain MRI images from the Alzheimer’s Disease Neuroimaging Initiative (ADNI).
+
+The objective is to develop and evaluate a ConvNeXt-based classification model against a simpler convolutional neural network (CNN) baseline. Beyond classification accuracy, this project investigates the reliability of model confidence, particularly when making incorrect or ambiguous predictions.
+
+2. Research Question
+
+Does ConvNeXt provide more accurate and reliable predictions than a standard CNN baseline, particularly for ambiguous cases where prediction confidence may not reflect actual correctness?
+
+The investigation will consider classification performance, prediction confidence, computational efficiency, and representative failure cases.
+
+3. Dataset
+
+The project uses the ADNI brain MRI dataset provided through the UQ Rangpur computing cluster.
+
+Dataset location:
+/home/groups/comp3710/ADNI
+
+The dataset directory contains:
+
+* AD_NC/train/ — Training data
+* AD_NC/test/ — Testing data
+* meta_data_with_label.json — Dataset metadata and labels
+
+The dataset occupies approximately 574 MB.
+
+The data loading pipeline will be designed to prevent patient-level data leakage between training, validation, and testing sets.
+
+4. Methodology
+
+Two classification models will be implemented using PyTorch:
+
+4.1 Baseline CNN
+
+A standard convolutional neural network will establish a performance benchmark.
+
+4.2 ConvNeXt
+
+A ConvNeXt-based classifier will be implemented and evaluated against the baseline using the same held-out test data.
+
+5. Evaluation
+
+Both models will be evaluated using:
+
+* Classification accuracy
+* Per-class precision and recall
+* Macro-averaged F1 score
+* Area Under the ROC Curve (AUROC)
+* Prediction confidence and calibration
+* Parameter count, GPU memory usage, and inference latency
+
+A qualitative analysis of 3–5 representative misclassified or ambiguous cases will also be conducted.
+
+6. Implementation
+
+The project will contain the following files:
+
+* modules.py — Model architectures
+* dataset.py — Data loading and preprocessing
+* train.py — Model training and evaluation
+* predict.py — Inference and visualisation
+* README.md — Project documentation
+
+7. Results
+
+To be completed after model training and evaluation.
+
+8. Discussion and Conclusion
+
+To be completed after experimental analysis.
+
+9. Artificial Intelligence Usage Disclosure
+
+To be completed with details of AI tools used, their contributions, and the verification procedures performed.
