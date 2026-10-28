@@ -35,6 +35,9 @@ The dataset occupies approximately 574 MB.
 
 The data loading pipeline will be designed to prevent patient-level data leakage between training, validation, and testing sets.
 
+Dataset Integrity and Patient-Level Leakage
+An initial audit of the supplied ADNI dataset identified 1,076 unique training scans and 450 unique testing scans. Although no scan identifiers were shared between the provided splits, 216 patient identifiers appeared in both sets. This indicates that the supplied split is not patient-independent and may overestimate generalisation performance. To address this limitation, the project will construct new training, validation, and testing partitions grouped by patient identifier, ensuring that no individual contributes images to multiple partitions.
+
 4. Methodology
 
 Two classification models will be implemented using PyTorch:
