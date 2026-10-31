@@ -166,7 +166,7 @@ def collect_predictions(model, loader, device):
         "latency_ms_per_image": elapsed_seconds / total_images * 1000,
     }
 
-def save_predictions(results, output_dir):
+def save_predictions(results, output_dir, patient_threshold=0.5):
     """
     Export individual slice predictions and patient-level
     aggregated predictions for reproducible analysis.
@@ -226,7 +226,8 @@ def save_predictions(results, output_dir):
         writer.writerow([
             "patient_id",
             "true_label",
-            "predicted_label",
+            "predicted_label_default",
+            "predicted_label_selected",
             "probability_ad",
             "num_slices",
         ])
@@ -243,6 +244,7 @@ def save_predictions(results, output_dir):
                 patient_id,
                 values["labels"][0],
                 int(probability >= 0.5),
+                int(probability >= patient_threshold),
                 probability,
                 len(values["probabilities"]),
             ])
@@ -708,7 +710,7 @@ def main(args):
     )
 
     # Export individual predictions for reproducibility.
-    save_predictions(results, output_dir)
+    save_predictions(results, output_dir, patient_threshold=selected_threshold)
 
     # Save complete metrics.
     with open(output_dir / "metrics.json", "w") as f:
@@ -730,8 +732,6 @@ def main(args):
             indent=2,
         )
 
-    save_predictions(results, output_dir)
-
     print("\nEvaluation complete.")
     print("Results saved to:", output_dir)
 
@@ -748,7 +748,12 @@ def parse_args():
     parser.add_argument("--splits", default="splits.json")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--workers", type=int, default=1)
-    parser.add_argument("--output-dir", default="outputs")
+
+    parser.add_argument(
+        "--output-dir",
+        default="outputs",
+        help="Root output directory; model name and split are appended automatically.",
+    )
 
     parser.add_argument(
         "--threshold-file",
