@@ -75,7 +75,16 @@ The project will contain the following files:
 
 7. Results
 
-To be completed after model training and evaluation.
+Baseline CNN
+
+* 1.17M parameters
+* Best validation accuracy: 70.51%
+* Best validation loss: 0.6016
+* Best epoch: 5
+* Training stopped at epoch 10
+* Peak allocated VRAM: 1.02 GiB
+* Average epoch duration: ~94 seconds
+* Evidence of overfitting and unstable validation performance
 
 8. Discussion and Conclusion
 
