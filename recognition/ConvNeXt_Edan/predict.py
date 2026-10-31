@@ -166,6 +166,89 @@ def collect_predictions(model, loader, device):
         "latency_ms_per_image": elapsed_seconds / total_images * 1000,
     }
 
+def save_predictions(results, output_dir):
+    """
+    Export individual slice predictions and patient-level
+    aggregated predictions for reproducible analysis.
+
+    These files are for local analysis and should not be
+    committed to GitHub because they contain patient IDs.
+    """
+
+    import csv
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save slice-level predictions.
+    with open(output_dir / "slice_predictions.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+
+        writer.writerow([
+            "patient_id",
+            "path",
+            "true_label",
+            "predicted_label",
+            "probability_ad",
+        ])
+
+        for i in range(len(results["labels"])):
+            writer.writerow([
+                results["patient_ids"][i],
+                results["paths"][i],
+                int(results["labels"][i]),
+                int(results["predictions"][i]),
+                float(results["probabilities"][i]),
+            ])
+
+    # Aggregate predictions by patient.
+    patient_data = {}
+
+    for patient_id, label, probability in zip(
+        results["patient_ids"],
+        results["labels"],
+        results["probabilities"],
+    ):
+        if patient_id not in patient_data:
+            patient_data[patient_id] = {
+                "labels": [],
+                "probabilities": [],
+            }
+
+        patient_data[patient_id]["labels"].append(int(label))
+        patient_data[patient_id]["probabilities"].append(
+            float(probability)
+        )
+
+    with open(output_dir / "patient_predictions.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+
+        writer.writerow([
+            "patient_id",
+            "true_label",
+            "predicted_label",
+            "probability_ad",
+            "num_slices",
+        ])
+
+        for patient_id, values in patient_data.items():
+            if len(set(values["labels"])) != 1:
+                raise ValueError(
+                    f"Inconsistent labels for patient {patient_id}"
+                )
+
+            probability = float(np.mean(values["probabilities"]))
+
+            writer.writerow([
+                patient_id,
+                values["labels"][0],
+                int(probability >= 0.5),
+                probability,
+                len(values["probabilities"]),
+            ])
+
+    print("Saved slice and patient predictions.")
+
 
 def calculate_metrics(results):
     y_true = results["labels"]
@@ -314,54 +397,125 @@ def save_calibration_plot(results, output_dir):
     plt.close()
 
 
-def save_misclassified_examples(results, output_dir, max_examples=5):
-    mistakes = np.flatnonzero(
-        results["labels"] != results["predictions"]
+def save_misclassified_examples(results, output_dir, max_per_type=3):
+    """
+    Save representative false positives and false negatives.
+
+    Prioritise confident mistakes and avoid repeatedly selecting
+    slices from the same patient.
+    """
+
+    labels = results["labels"]
+    predictions = results["predictions"]
+    probabilities = results["probabilities"]
+    patient_ids = results["patient_ids"]
+
+    # NC incorrectly predicted as AD.
+    false_positives = np.flatnonzero(
+        (labels == 0) & (predictions == 1)
     )
 
-    if len(mistakes) == 0:
-        print("No misclassified images found.")
+    # AD incorrectly predicted as NC.
+    false_negatives = np.flatnonzero(
+        (labels == 1) & (predictions == 0)
+    )
+
+    def select_examples(indices, confidence_scores):
+        """
+        Select confident mistakes from distinct patients.
+        """
+
+        ranked = sorted(
+            indices,
+            key=lambda i: confidence_scores[i],
+            reverse=True,
+        )
+
+        selected = []
+        used_patients = set()
+
+        for i in ranked:
+            patient_id = patient_ids[i]
+
+            if patient_id in used_patients:
+                continue
+
+            selected.append(i)
+            used_patients.add(patient_id)
+
+            if len(selected) >= max_per_type:
+                break
+
+        return selected
+
+    # For false positives, confidence is P(AD).
+    selected_fp = select_examples(
+        false_positives,
+        probabilities,
+    )
+
+    # For false negatives, confidence is P(NC) = 1 - P(AD).
+    selected_fn = select_examples(
+        false_negatives,
+        1 - probabilities,
+    )
+
+    selected = [
+        ("False Positive", i) for i in selected_fp
+    ] + [
+        ("False Negative", i) for i in selected_fn
+    ]
+
+    if not selected:
+        print("No misclassified examples found.")
         return
 
-    # Prioritise high-confidence mistakes.
-    confidence = np.maximum(
-        results["probabilities"],
-        1 - results["probabilities"],
-    )
-
-    mistakes = sorted(
-        mistakes,
-        key=lambda index: confidence[index],
-        reverse=True,
-    )[:max_examples]
-
     fig, axes = plt.subplots(
-        1,
-        len(mistakes),
-        figsize=(4 * len(mistakes), 4),
+        2,
+        max_per_type,
+        figsize=(4 * max_per_type, 8),
+        squeeze=False,
     )
 
-    axes = np.atleast_1d(axes)
-
-    for ax, index in zip(axes, mistakes):
-        with Image.open(results["paths"][index]) as image:
-            ax.imshow(image.convert("L"), cmap="gray")
-
-        true_label = CLASS_NAMES[results["labels"][index]]
-        predicted_label = CLASS_NAMES[results["predictions"][index]]
-        probability = results["probabilities"][index]
-
-        ax.set_title(
-            f"True: {true_label}\n"
-            f"Pred: {predicted_label}\n"
-            f"P(AD): {probability:.3f}"
-        )
+    for ax in axes.flat:
         ax.axis("off")
 
+    for row, examples in enumerate([selected_fp, selected_fn]):
+        error_type = "False Positive" if row == 0 else "False Negative"
+
+        for col, index in enumerate(examples):
+            ax = axes[row, col]
+
+            with Image.open(results["paths"][index]) as image:
+                ax.imshow(image.convert("L"), cmap="gray")
+
+            true_label = CLASS_NAMES[int(labels[index])]
+            predicted_label = CLASS_NAMES[int(predictions[index])]
+            probability = float(probabilities[index])
+
+            ax.set_title(
+                f"{error_type}\n"
+                f"True: {true_label} | Pred: {predicted_label}\n"
+                f"P(AD): {probability:.3f}",
+                fontsize=10,
+            )
+
+            ax.axis("off")
+
     plt.tight_layout()
-    plt.savefig(output_dir / "misclassified_examples.png", dpi=150)
+
+    plt.savefig(
+        output_dir / "misclassified_examples_balanced.png",
+        dpi=150,
+        bbox_inches="tight",
+    )
+
     plt.close()
 
+    print(
+        f"Saved {len(selected_fp)} false-positive and "
+        f"{len(selected_fn)} false-negative examples."
+    )
 
 def main(args):
     device = torch.device(
@@ -417,7 +571,14 @@ def main(args):
     save_roc_curve(patient_results, output_dir, "patient")
 
     save_calibration_plot(results, output_dir)
-    save_misclassified_examples(results, output_dir)
+
+    save_misclassified_examples(
+        results,
+        output_dir,
+        max_per_type=3,
+    )
+
+    save_predictions(results, output_dir)
 
     with open(output_dir / "metrics.json", "w") as f:
         json.dump(
