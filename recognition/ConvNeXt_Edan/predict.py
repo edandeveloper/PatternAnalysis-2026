@@ -249,35 +249,93 @@ def save_predictions(results, output_dir):
 
     print("Saved slice and patient predictions.")
 
+def load_selected_threshold(model_name, threshold_file):
+    """
+    Load the patient-level threshold selected on validation data.
 
-def calculate_metrics(results):
-    y_true = results["labels"]
-    y_pred = results["predictions"]
-    y_prob = results["probabilities"]
+    Never select or optimise thresholds using test data.
+    """
+    with open(threshold_file, "r") as f:
+        thresholds = json.load(f)
+
+    if model_name not in thresholds:
+        raise ValueError(
+            f"No threshold found for model: {model_name}"
+        )
+
+    config = thresholds[model_name]
+
+    if config.get("selection_split") != "validation":
+        raise ValueError(
+            "Threshold must have been selected on validation data."
+        )
+
+    if config.get("selection_metric") != "patient_balanced_accuracy":
+        raise ValueError(
+            "Unexpected threshold-selection criterion."
+        )
+
+    threshold = float(config["threshold"])
+
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("Threshold must be between 0 and 1.")
+
+    return threshold
+
+def calculate_metrics(results, threshold=0.5):
+    """
+    Calculate classification metrics using a specified threshold.
+
+    AD = 1 (positive class)
+    NC = 0 (negative class)
+    """
+
+    y_true = np.asarray(results["labels"])
+    y_prob = np.asarray(results["probabilities"])
+
+    y_pred = (y_prob >= threshold).astype(int)
+
+    tn, fp, fn, tp = confusion_matrix(
+        y_true,
+        y_pred,
+        labels=[0, 1],
+    ).ravel()
+
+    sensitivity = tp / (tp + fn) if (tp + fn) else 0.0
+    specificity = tn / (tn + fp) if (tn + fp) else 0.0
 
     metrics = {
+        "threshold": float(threshold),
         "accuracy": float(accuracy_score(y_true, y_pred)),
+        "balanced_accuracy": float(
+            (sensitivity + specificity) / 2
+        ),
         "precision": float(
             precision_score(y_true, y_pred, zero_division=0)
         ),
-        "recall": float(
-            recall_score(y_true, y_pred, zero_division=0)
-        ),
+        "recall": float(sensitivity),
+        "sensitivity": float(sensitivity),
+        "specificity": float(specificity),
         "f1": float(
             f1_score(y_true, y_pred, zero_division=0)
         ),
         "brier_score": float(
             brier_score_loss(y_true, y_prob)
         ),
+        "tn": int(tn),
+        "fp": int(fp),
+        "fn": int(fn),
+        "tp": int(tp),
     }
 
     if len(np.unique(y_true)) == 2:
-        metrics["auroc"] = float(roc_auc_score(y_true, y_prob))
+        metrics["auroc"] = float(
+            roc_auc_score(y_true, y_prob)
+        )
     else:
         metrics["auroc"] = None
 
     return metrics
-
 
 def aggregate_by_patient(results):
     """
@@ -327,10 +385,23 @@ def aggregate_by_patient(results):
     }
 
 
-def save_confusion_matrix(results, output_dir, name):
+def save_confusion_matrix(
+    results,
+    output_dir,
+    name,
+    threshold=0.5,
+):
+    """
+    Save a confusion matrix at the specified threshold.
+    """
+
+    predictions = (
+        np.asarray(results["probabilities"]) >= threshold
+    ).astype(int)
+
     matrix = confusion_matrix(
         results["labels"],
-        results["predictions"],
+        predictions,
         labels=[0, 1],
     )
 
@@ -340,11 +411,20 @@ def save_confusion_matrix(results, output_dir, name):
     )
 
     display.plot(cmap="Blues", values_format="d")
-    plt.title(f"{name} Confusion Matrix")
-    plt.tight_layout()
-    plt.savefig(output_dir / f"{name}_confusion_matrix.png", dpi=150)
-    plt.close()
 
+    plt.title(
+        f"{name.title()} Confusion Matrix "
+        f"(threshold={threshold:.2f})"
+    )
+
+    plt.tight_layout()
+
+    plt.savefig(
+        output_dir / f"{name}_confusion_matrix.png",
+        dpi=150,
+    )
+
+    plt.close()
 
 def save_roc_curve(results, output_dir, name):
     if len(np.unique(results["labels"])) < 2:
@@ -547,10 +627,32 @@ def main(args):
 
     results = collect_predictions(model, loader, device)
 
-    slice_metrics = calculate_metrics(results)
+    # Slice-level evaluation remains at the default threshold.
+    slice_metrics = calculate_metrics(
+        results,
+        threshold=0.5,
+    )
 
+    # Aggregate slice probabilities into one probability per patient.
     patient_results = aggregate_by_patient(results)
-    patient_metrics = calculate_metrics(patient_results)
+
+    # Default patient-level classification.
+    patient_metrics_default = calculate_metrics(
+        patient_results,
+        threshold=0.5,
+    )
+
+    # Load the threshold selected using validation patients.
+    selected_threshold = load_selected_threshold(
+        checkpoint["model_name"],
+        args.threshold_file,
+    )
+
+    # Apply the frozen threshold to patient-level predictions.
+    patient_metrics_selected = calculate_metrics(
+        patient_results,
+        threshold=selected_threshold,
+    )
 
     slice_metrics["latency_ms_per_image"] = (
         results["latency_ms_per_image"]
@@ -558,37 +660,77 @@ def main(args):
 
     slice_metrics["total_parameters"] = count_parameters(model)
 
-    print("\nSLICE-LEVEL METRICS")
+    print("\nSLICE-LEVEL METRICS (threshold=0.50)")
     print(json.dumps(slice_metrics, indent=2))
 
-    print("\nPATIENT-LEVEL METRICS")
-    print(json.dumps(patient_metrics, indent=2))
+    print("\nPATIENT-LEVEL METRICS (threshold=0.50)")
+    print(json.dumps(patient_metrics_default, indent=2))
 
-    save_confusion_matrix(results, output_dir, "slice")
-    save_confusion_matrix(patient_results, output_dir, "patient")
+    print(
+        f"\nPATIENT-LEVEL METRICS "
+        f"(selected threshold={selected_threshold:.2f})"
+    )
+    print(json.dumps(patient_metrics_selected, indent=2))
 
+    # Confusion matrices.
+    save_confusion_matrix(
+        results,
+        output_dir,
+        "slice",
+        threshold=0.5,
+    )
+
+    save_confusion_matrix(
+        patient_results,
+        output_dir,
+        "patient_default",
+        threshold=0.5,
+    )
+
+    save_confusion_matrix(
+        patient_results,
+        output_dir,
+        "patient_selected",
+        threshold=selected_threshold,
+    )
+
+    # Threshold-independent evaluation figures.
     save_roc_curve(results, output_dir, "slice")
     save_roc_curve(patient_results, output_dir, "patient")
 
     save_calibration_plot(results, output_dir)
 
+    # Error analysis.
     save_misclassified_examples(
         results,
         output_dir,
         max_per_type=3,
     )
 
+    # Export individual predictions for reproducibility.
     save_predictions(results, output_dir)
 
+    # Save complete metrics.
     with open(output_dir / "metrics.json", "w") as f:
         json.dump(
             {
+                "model": checkpoint["model_name"],
+                "split": args.split,
+                "checkpoint_epoch": checkpoint["epoch"],
+                "threshold_selection": {
+                    "source": "validation",
+                    "criterion": "patient_balanced_accuracy",
+                    "selected_threshold": selected_threshold,
+                },
                 "slice_level": slice_metrics,
-                "patient_level": patient_metrics,
+                "patient_level_default": patient_metrics_default,
+                "patient_level_selected": patient_metrics_selected,
             },
             f,
             indent=2,
         )
+
+    save_predictions(results, output_dir)
 
     print("\nEvaluation complete.")
     print("Results saved to:", output_dir)
@@ -607,6 +749,11 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--output-dir", default="outputs")
+
+    parser.add_argument(
+        "--threshold-file",
+        default="outputs/threshold_analysis/selected_thresholds.json",
+    )
 
     return parser.parse_args()
 
