@@ -1,5 +1,6 @@
 # Alzheimer's Disease Classification Using ConvNeXt
 
+**Author:** Edan Zhao 47996386
 **Course:** COMP3710 — Pattern Recognition  
 **Difficulty:** Hard  
 **Framework:** PyTorch  
@@ -289,13 +290,17 @@ This distinction is important: classification performance at a chosen threshold 
 
 Changing the classification threshold alters sensitivity, specificity and related decision metrics, but it does not change the probabilities themselves or their Brier score.
 
-#### Calibration figures
+#### Slice-level calibration figures
 
-![Baseline patient calibration analysis](figures/baseline/test/calibration_curve.png)
+![Baseline slice-level calibration](figures/baseline/test/calibration_curve.png)
 
-![ConvNeXt patient calibration analysis](figures/convnext/test/calibration_curve.png)
+![ConvNeXt slice-level calibration](figures/convnext/test/calibration_curve.png)
 
-**Interpretation:** These results support the conclusion that ConvNeXt produces better probability predictions according to the measured Brier score. They do not establish that its probabilities are perfectly calibrated.
+These reliability diagrams visualise slice-level probability calibration.
+Patient-level probability quality is assessed separately using the Brier
+scores calculated after aggregating predictions for each patient.
+
+**Interpretation:**These reliability diagrams visualise slice-level probability calibration. Patient-level probability quality is assessed separately using the reported Brier scores, calculated after averaging slice probabilities for each patient.
 
 ## 9. Computational Efficiency
 
@@ -317,7 +322,21 @@ The results nevertheless illustrate that increasing model capacity does not nece
 
 ## 10. Qualitative Error Analysis
 
-To investigate prediction reliability, representative false-positive and false-negative MRI slices were examined from the held-out test set. Three examples from each error category were generated for both architectures, with the analysis focusing on five illustrative cases.
+To investigate prediction reliability, high-confidence false-positive and false-negative MRI slices were selected from the held-out test set. These examples illustrate prominent failure modes rather than the typical distribution of model errors. 
+
+### Selected Misclassification Examples
+
+| Model | True label | Predicted label | P(AD) |
+|---|---|---|---:|
+| Baseline CNN | NC | AD | 0.995 |
+| ConvNeXt-Tiny | NC | AD | 0.959 |
+| Baseline CNN | AD | NC | 0.075 |
+| ConvNeXt-Tiny | AD | NC | 0.042 |
+| Baseline CNN | AD | NC | 0.127 |
+
+The table presents five high-confidence slice-level errors from
+the held-out test set. P(AD) represents the model's predicted
+probability of Alzheimer's Disease.
 
 ### 10.1 High-confidence false positives
 
@@ -439,9 +458,43 @@ The local `outputs/` directory contains checkpoints, evaluation metrics, predict
 
 Experiments used Python, PyTorch, torchvision, timm, scikit-learn and associated scientific Python packages.
 
-**[To complete: provide exact tested package versions or a verified requirements file.]**
+### 13.2 Environment
 
-The dataset must be accessed from its authorised UQ Rangpur location.
+The experiments were conducted on the UQ Rangpur computing
+cluster using an NVIDIA A100 PCIe 40 GB GPU.
+
+The tested software environment included:
+
+| Package | Version |
+|---|---|
+| PyTorch | 2.5.1+cu121 |
+| torchvision | 0.20.1+cu121 |
+| timm | 1.0.30 |
+| NumPy | 2.4.6 |
+| pandas | 3.1.0 |
+| scikit-learn | 1.9.1 |
+| matplotlib | 3.11.2 |
+| Pillow | 12.3.0 |
+
+The CUDA-enabled PyTorch installation used CUDA 12.1.
+
+Dependencies are documented in `requirements.txt`.
+
+Install dependencies using:
+
+```bash
+python -m pip install -r requirements.txt
+
+For CUDA-enabled execution, PyTorch and torchvision must
+be installed with compatible CUDA builds.
+
+The dataset is accessible through the authorised UQ Rangpur
+location:
+
+/home/groups/comp3710/ADNI
+
+Patient-specific split manifests, raw data, checkpoints
+and prediction CSVs are excluded from the public repository.
 
 ### 13.3 Training
 
