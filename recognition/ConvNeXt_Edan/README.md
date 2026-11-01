@@ -24,7 +24,7 @@ Both architectures were trained from scratch and evaluated using identical patie
 
 **Does ConvNeXt provide more accurate and reliable predictions than a standard CNN baseline, particularly when prediction confidence does not reflect actual correctness?**
 
-The investigation addresses four related questions:
+The investigation addresses five related questions:
 
 1. Does ConvNeXt improve classification performance on unseen patients?
 2. How do the architectures differ in sensitivity, specificity and confidence quality?
@@ -873,9 +873,17 @@ python train.py --model convnext --epochs 20 --batch-size 16 --lr 0.0001 --worke
 ### 13.5 Validation
 
 ```bash
-python predict.py --checkpoint outputs/baseline/best_model.pth --split val --batch-size 32 --workers 1
+python predict.py \
+  --checkpoint outputs/baseline/best_model.pth \
+  --split val \
+  --batch-size 32 \
+  --workers 1
 
-python predict.py --checkpoint outputs/convnext/best_model.pth --split val --batch-size 16 --workers 1
+python predict.py \
+  --checkpoint outputs/convnext/best_model.pth \
+  --split val \
+  --batch-size 16 \
+  --workers 1
 ```
 
 ### 13.6 Threshold analysis
@@ -886,12 +894,21 @@ python threshold_analysis.py
 
 The validation-derived threshold file must be generated before reproducing selected-threshold test metrics.
 
+
 ### 13.7 Held-out test evaluation
 
 ```bash
-python predict.py --checkpoint outputs/baseline/best_model.pth --split test --batch-size 32 --workers 1
+python predict.py \
+  --checkpoint outputs/baseline/best_model.pth \
+  --split test \
+  --batch-size 32 \
+  --workers 1
 
-python predict.py --checkpoint outputs/convnext/best_model.pth --split test --batch-size 16 --workers 1
+python predict.py \
+  --checkpoint outputs/convnext/best_model.pth \
+  --split test \
+  --batch-size 16 \
+  --workers 1
 ```
 
 ### 13.8 Results comparison
