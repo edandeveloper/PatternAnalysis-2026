@@ -59,6 +59,10 @@ To prevent this form of leakage, the project generated new partitions using pati
 
 The split was generated with random seed 42 and stored locally in `splits.json`.
 
+The patient-independent split is generated locally from the authorised ADNI dataset using the data preparation functionality in `dataset.py`. The procedure assigns each patient exclusively to one partition and uses random seed 42 for reproducibility. Once generated, `splits.json` records the train, validation and test assignments so that subsequent training and evaluation runs use consistent partitions.
+
+The split manifest is excluded from version control because it contains patient identifiers and image paths. Reproducing the experiment therefore requires authorised access to the original ADNI dataset and regeneration of the split manifest.
+
 The split file is excluded from version control because it contains dataset-specific patient and image information.
 
 The validation and test partitions each contain 69 NC patients and 33 AD patients.
@@ -300,8 +304,6 @@ These reliability diagrams visualise slice-level probability calibration.
 Patient-level probability quality is assessed separately using the Brier
 scores calculated after aggregating predictions for each patient.
 
-**Interpretation:**These reliability diagrams visualise slice-level probability calibration. Patient-level probability quality is assessed separately using the reported Brier scores, calculated after averaging slice probabilities for each patient.
-
 ## 9. Computational Efficiency
 
 | Resource | Baseline CNN | ConvNeXt-Tiny |
@@ -444,19 +446,17 @@ ConvNeXt_Edan/
 ├── predict.py
 ├── threshold_analysis.py
 ├── compare_results.py
+├── requirements.txt
 ├── README.md
 ├── figures/
 │   ├── baseline/
 │   ├── convnext/
 │   └── thresholds/
-└── outputs/                 # Excluded from Git
+├── splits.json          # Generated locally; Git-ignored
+└── outputs/             # Generated locally; Git-ignored
 ```
 
 The local `outputs/` directory contains checkpoints, evaluation metrics, predictions and generated figures. Some files contain patient-specific information and are not published.
-
-### 13.2 Environment
-
-Experiments used Python, PyTorch, torchvision, timm, scikit-learn and associated scientific Python packages.
 
 ### 13.2 Environment
 
@@ -484,6 +484,7 @@ Install dependencies using:
 
 ```bash
 python -m pip install -r requirements.txt
+```
 
 For CUDA-enabled execution, PyTorch and torchvision must
 be installed with compatible CUDA builds.
@@ -496,7 +497,31 @@ location:
 Patient-specific split manifests, raw data, checkpoints
 and prediction CSVs are excluded from the public repository.
 
-### 13.3 Training
+### 13.3 Dataset Preparation
+
+The dataset preparation pipeline is implemented in `dataset.py`. It collects MRI image records from the authorised ADNI dataset, extracts patient identifiers and creates patient-independent training, validation and test partitions using random seed 42.
+
+To generate the dataset splits, run:
+
+```bash
+python dataset.py
+```
+
+The script automatically:
+
+- Collects the available MRI images and associated patient identifiers.
+- Assigns patients exclusively to training, validation or test partitions.
+- Prints a summary of the resulting partitions.
+- Saves the assignments to `splits.json`.
+- Performs a DataLoader smoke test using a batch of four images.
+
+The generated `splits.json` file is reused by the training and evaluation scripts to maintain consistent patient assignments.
+
+Because this file contains patient-specific information and image paths, it is excluded from version control.
+
+Reproducing the experiment requires authorised access to the ADNI dataset. The generated partitions should be checked against the documented patient and image counts before comparing experimental results.
+
+### 13.4 Training
 
 ```bash
 python train.py --model baseline --epochs 20 --batch-size 32 --lr 0.001
@@ -504,7 +529,7 @@ python train.py --model baseline --epochs 20 --batch-size 32 --lr 0.001
 python train.py --model convnext --epochs 20 --batch-size 16 --lr 0.0001 --workers 1
 ```
 
-### 13.4 Validation
+### 13.5 Validation
 
 ```bash
 python predict.py --checkpoint outputs/baseline/best_model.pth --split val --batch-size 32 --workers 1
@@ -512,7 +537,7 @@ python predict.py --checkpoint outputs/baseline/best_model.pth --split val --bat
 python predict.py --checkpoint outputs/convnext/best_model.pth --split val --batch-size 16 --workers 1
 ```
 
-### 13.5 Threshold analysis
+### 13.6 Threshold analysis
 
 ```bash
 python threshold_analysis.py
@@ -520,7 +545,7 @@ python threshold_analysis.py
 
 The validation-derived threshold file must be generated before reproducing selected-threshold test metrics.
 
-### 13.6 Held-out test evaluation
+### 13.7 Held-out test evaluation
 
 ```bash
 python predict.py --checkpoint outputs/baseline/best_model.pth --split test --batch-size 32 --workers 1
@@ -528,13 +553,15 @@ python predict.py --checkpoint outputs/baseline/best_model.pth --split test --ba
 python predict.py --checkpoint outputs/convnext/best_model.pth --split test --batch-size 16 --workers 1
 ```
 
-### 13.7 Results comparison
+### 13.8 Results comparison
 
 ```bash
 python compare_results.py
 ```
 
-**[To verify: exact command-line behaviour, dataset paths, threshold-file handling and installation instructions against the final source code.]**
+The evaluation pipeline separates model development from final testing. Training and checkpoint selection use the training and validation partitions, and classification thresholds are selected exclusively from validation patient-level predictions. The held-out test partition is used only for final evaluation.
+
+The scripts save checkpoints, prediction CSVs, evaluation metrics and figures under `outputs/`. As these artefacts are excluded from version control, reproducing the complete results requires running the documented pipeline using the authorised dataset and the corresponding software environment.
 
 ## 14. Conclusion
 
@@ -550,12 +577,16 @@ Overall, the findings demonstrate that greater architectural complexity does not
 
 ## 15. Artificial Intelligence Usage Disclosure
 
-**[Review and personalise before submission.]**
+ChatGPT (OpenAI) was used throughout this project as a development and documentation assistant. Its contributions included:
 
-ChatGPT was used to assist with planning the project, discussing implementation approaches, interpreting experimental results, debugging, and drafting or refining documentation.
+- **Project planning:** Discussing the experimental approach, model comparison criteria and patient-level data leakage concerns.
+- **Implementation assistance:** Providing suggestions for PyTorch training, evaluation, prediction aggregation and threshold-analysis code.
+- **Debugging:** Helping identify and resolve issues with output directories, prediction exports and evaluation scripts.
+- **Results interpretation:** Assisting with the interpretation of classification metrics, calibration, computational trade-offs and generalisation performance.
+- **Documentation:** Assisting with the structure, drafting and refinement of this README.
 
-AI-generated suggestions were reviewed and adapted during implementation. The experiments were executed on the UQ Rangpur computing cluster, and model performance was obtained from the resulting training and evaluation outputs.
+AI-generated suggestions were reviewed against the implemented code and available experimental results. Training and evaluation were executed on the UQ Rangpur computing cluster, and numerical results were obtained from the saved experiment outputs rather than generated by AI.
 
-The author remains responsible for the submitted code, experimental methodology, reported results and conclusions.
+Qualitative error analysis was informed by inspection of the generated MRI misclassification figures. Interpretations were limited to observable results and did not assume unsupported clinical explanations.
 
-**[Add any other AI tools used, their specific contributions, and the verification steps actually performed, in accordance with the course requirements.]**
+The author remains responsible for the final implementation, experimental methodology, verification, results and submitted documentation.
