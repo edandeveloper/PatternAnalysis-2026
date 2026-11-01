@@ -1,10 +1,15 @@
 # Alzheimer's Disease Classification Using ConvNeXt
 
 **Author:** Edan Zhao 47996386
-**Course:** COMP3710 — Pattern Recognition  
-**Difficulty:** Hard  
-**Framework:** PyTorch  
-**Dataset:** Alzheimer's Disease Neuroimaging Initiative (ADNI)  
+
+**Course:** COMP3710 — Pattern Recognition
+
+**Difficulty:** Hard
+
+**Framework:** PyTorch
+
+**Dataset:** Alzheimer's Disease Neuroimaging Initiative (ADNI)
+
 **Status:** Experimental evaluation completed
 
 ## 1. Project Overview
