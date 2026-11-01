@@ -284,6 +284,20 @@ def load_selected_threshold(model_name, threshold_file):
 
     return threshold
 
+def resolve_patient_threshold(model_name, split, threshold_file):
+    """Keep validation prediction generation independent of threshold selection."""
+    if split == "val":
+        return 0.5, "default_preselection"
+
+    if split == "test":
+        return (
+            load_selected_threshold(model_name, threshold_file),
+            "validation",
+        )
+
+    raise ValueError(f"Unsupported evaluation split: {split}")
+
+
 def calculate_metrics(results, threshold=0.5):
     """
     Calculate classification metrics using a specified threshold.
@@ -644,9 +658,11 @@ def main(args):
         threshold=0.5,
     )
 
-    # Load the threshold selected using validation patients.
-    selected_threshold = load_selected_threshold(
+    # Validation predictions precede threshold selection.
+    # Test predictions require a frozen validation-selected threshold.
+    selected_threshold, threshold_source = resolve_patient_threshold(
         checkpoint["model_name"],
+        args.split,
         args.threshold_file,
     )
 
@@ -720,8 +736,12 @@ def main(args):
                 "split": args.split,
                 "checkpoint_epoch": checkpoint["epoch"],
                 "threshold_selection": {
-                    "source": "validation",
-                    "criterion": "patient_balanced_accuracy",
+                    "source": threshold_source,
+                    "criterion": (
+                        "patient_balanced_accuracy"
+                        if args.split == "test"
+                        else "not_yet_selected"
+                    ),
                     "selected_threshold": selected_threshold,
                 },
                 "slice_level": slice_metrics,
