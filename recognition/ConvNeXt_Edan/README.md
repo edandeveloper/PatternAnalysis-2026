@@ -355,6 +355,8 @@ All thresholds were selected using validation patient predictions. The supplemen
 
 ## 7. Experimental Results
 
+Sections 7.1–7.5 report the original baseline CNN and scratch-trained ConvNeXt experiments. Section 7.6 compares all three configurations, and Section 7.7 reports the supplementary pretrained-model uncertainty analysis.
+
 ### 7.1 Held-out test: slice-level classification
 
 The independent test set contains 4,600 MRI slices from 102 patients.
@@ -398,7 +400,7 @@ ConvNeXt demonstrated a more balanced sensitivity–specificity trade-off at the
 
 ### 7.3 Held-out test: patient-level classification using validation-selected thresholds
 
-This is the primary patient-level comparison.
+This is the primary patient-level comparison for the original scratch-trained experiments. The complete three-model comparison appears in Section 7.6.
 
 | Metric | Baseline CNN | ConvNeXt-Tiny |
 |---|---:|---:|
@@ -538,7 +540,38 @@ These are supplementary results obtained using the same previously
 examined test patients. They do not constitute independent external
 validation or a controlled estimate of the causal benefit of pretraining.
 
+<!-- PRETRAINED_BOOTSTRAP_START -->
+### 7.7 Supplementary Pretrained-Model Statistical Uncertainty
+
+Statistical uncertainty for the supplementary pretrained model was estimated using 5,000 stratified patient-level bootstrap resamples with seed 42. Each resample retained 69 NC and 33 AD patient observations. The validation-selected thresholds remained fixed.
+
+| Patient-level metric | Estimate | 95% bootstrap interval |
+|---|---:|---:|
+| Accuracy | 0.8627 | [0.7941, 0.9216] |
+| Balanced accuracy | 0.8195 | [0.7358, 0.9018] |
+| AD sensitivity | 0.6970 | [0.5455, 0.8485] |
+| NC specificity | 0.9420 | [0.8841, 0.9855] |
+| AD precision | 0.8519 | [0.7273, 0.9630] |
+| AD F1 | 0.7667 | [0.6415, 0.8750] |
+| Macro-F1 | 0.8347 | [0.7495, 0.9089] |
+| AUROC | 0.9262 | [0.8726, 0.9693] |
+| Brier score | 0.1053 | [0.0724, 0.1418] |
+
+#### Paired Comparisons
+
+The same resampled patient indices were used across all models. Differences below are pretrained ConvNeXt minus the comparison model.
+
+| Comparison | Accuracy difference (pp) | Balanced-accuracy difference (pp) |
+|---|---:|---:|
+| Pretrained vs Baseline CNN | +11.76 [+3.92, +19.61] | +11.07 [+1.32, +20.88] |
+| Pretrained vs Scratch ConvNeXt | +18.63 [+8.82, +28.43] | +11.40 [+0.71, +21.94] |
+
+These intervals describe sampling uncertainty conditional on the existing cohort and trained models. They do not capture variation across training seeds, patient partitions, threshold selection or external clinical populations. The pretrained experiment reused the previously examined test cohort; these retrospective intervals are not independent validation.
+<!-- PRETRAINED_BOOTSTRAP_END -->
+
 ## 8. Prediction Confidence and Calibration
+
+The original calibration figures and reject-option analyses below refer to the baseline CNN and scratch-trained ConvNeXt unless otherwise stated. The supplementary pretrained model's Brier score is reported separately.
 
 The Brier score measures the mean squared difference between predicted probabilities and binary ground-truth outcomes. Lower scores indicate more accurate probability predictions.
 
@@ -697,6 +730,8 @@ The results demonstrate that confidence ranking depends partly on the definition
 The original raw-margin policy remains the primary reject-option experiment. The normalised-margin results are reported as an exploratory sensitivity analysis rather than selected retrospectively as a superior test policy.
 
 ## 9. Computational Efficiency
+
+The initial two-column resource table compares the baseline CNN and scratch-trained ConvNeXt. The pretrained ConvNeXt measurements are described immediately afterward.
 
 | Resource | Baseline CNN | ConvNeXt-Tiny |
 |---|---:|---:|
@@ -898,7 +933,7 @@ The experiments highlight the distinction between:
 - **Classification:** The accuracy and sensitivity–specificity trade-off at a particular threshold.
 - **Probability quality:** How accurately predicted probabilities reflect observed outcomes, assessed here using the Brier score.
 
-ConvNeXt's lower Brier score is a meaningful advantage even though its final balanced accuracy was similar to the baseline.
+The scratch-trained ConvNeXt's lower Brier score was an advantage over the baseline despite similar balanced accuracy. The supplementary pretrained model improved both measures.
 
 ### 11.4 Study limitations
 
@@ -981,6 +1016,7 @@ ConvNeXt_Edan/
 ├── reject_option.py
 ├── ranking_sensitivity.py
 ├── statistical_analysis.py
+├── pretrained_uncertainty.py
 ├── requirements.txt
 ├── README.md
 ├── figures/
@@ -1246,6 +1282,10 @@ The original scratch-model experiments, bootstrap results and
 reject-option analysis remain separate from this supplementary
 pretrained comparison. Checkpoints, patient-specific predictions and
 split manifests are Git-ignored.
+
+### 13.11 Reproducing Pretrained Statistical Uncertainty
+
+Run `python pretrained_uncertainty.py` after producing all three models' test patient prediction CSVs. The script recomputes patient-stratified confidence intervals and paired comparisons with seed 42 and refreshes Section 7.7 of this README.
 
 ## 14. Conclusion
 
