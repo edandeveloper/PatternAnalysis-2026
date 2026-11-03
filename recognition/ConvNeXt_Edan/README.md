@@ -18,7 +18,15 @@ This project investigates whether ConvNeXt-Tiny offers meaningful improvements o
 
 The investigation considers not only classification accuracy but also patient-level generalisation, sensitivity, specificity, prediction confidence, probability quality and computational efficiency.
 
-Both architectures were trained from scratch and evaluated using identical patient-independent training, validation and held-out test partitions. Validation data was used for checkpoint selection and patient-level classification threshold optimisation. The initial held-out test evaluation was performed after model and classification-threshold selection. Subsequent reject-option, ranking-sensitivity and bootstrap analyses reused the saved test predictions for retrospective research, without retraining or selecting operating thresholds using test labels.
+The initial baseline CNN and ConvNeXt were trained from scratch and evaluated using identical patient-independent training, validation and held-out test partitions. Validation data was used for checkpoint selection and patient-level classification threshold optimisation. The initial held-out test evaluation was performed after model and classification-threshold selection. Subsequent reject-option, ranking-sensitivity and bootstrap analyses reused the saved test predictions for retrospective research, without retraining or selecting operating thresholds using test labels.
+
+A supplementary experiment subsequently fine-tuned an ImageNet-pretrained
+ConvNeXt-Tiny model on the same patient-independent splits. It achieved
+86.27% patient-level test accuracy using a threshold selected from
+validation data, exceeding the specified 80% test-accuracy target.
+Because the test cohort had already been examined in the initial
+experiments, this additional result is a retrospective comparison
+rather than a fresh independent confirmation.
 
 ## 2. Research Question
 
@@ -210,7 +218,7 @@ ConvNeXt-Tiny was implemented using the `timm` library with a classification hea
 
 **Total parameters:** 27,821,666.
 
-Both models were trained from scratch without pretrained weights.
+The baseline CNN and initial ConvNeXt were trained from scratch. A subsequent ConvNeXt experiment used ImageNet-pretrained weights and fine-tuned the complete network.
 
 ### 4.4 Training procedure
 
@@ -240,6 +248,45 @@ Experiments were conducted on the UQ Rangpur cluster using an NVIDIA A100 PCIe 4
 
 The GPU memory and timing results describe the configurations actually tested. Because batch sizes differed, they should not be interpreted as fully controlled architecture benchmarks.
 
+### 4.5 Additional ImageNet-pretrained ConvNeXt experiment
+
+A supplementary experiment used `timm.create_model("convnext_tiny",
+pretrained=True, num_classes=2)` through the existing model factory.
+The initial pretrained weights were obtained through the `timm` model
+registry, with the Hugging Face Hub supplying the downloaded weight file.
+The classification network was fine-tuned end to end; the backbone was
+not frozen.
+
+This experiment used the same patient-independent partitions, preprocessing,
+augmentation, ConvNeXt architecture and checkpoint-selection procedure
+as the original investigation.
+
+| Configuration | Pretrained ConvNeXt |
+|---|---:|
+| Architecture | ConvNeXt-Tiny |
+| Parameters | 27,821,666 |
+| Initialisation | ImageNet pretrained |
+| Trainable parameters | 27,821,666 |
+| Initial learning rate | 0.00003 |
+| Weight decay | 0.0001 |
+| Batch size | 16 |
+| Maximum epochs | 20 |
+| Early-stopping patience | 5 |
+| Best checkpoint epoch | 1 |
+| Stopped at epoch | 6 |
+| Best validation loss | 0.3115 |
+| Approximate first-epoch duration | 124.1 s |
+| Peak allocated GPU memory | 1.33 GiB |
+
+The best checkpoint was selected using validation loss, rather than
+test performance. Although training accuracy exceeded 99% in later
+epochs, validation loss increased after epoch 1, indicating overfitting.
+The epoch-1 checkpoint was retained for evaluation.
+
+The scratch-trained and pretrained ConvNeXt configurations used different
+initial learning rates. Accordingly, the observed improvement cannot be
+attributed exclusively to pretrained weights.
+
 ## 5. Training Behaviour
 
 ### 5.1 Baseline CNN
@@ -259,6 +306,16 @@ The baseline achieved its lowest validation loss at epoch 5, after which further
 ConvNeXt reached its lowest validation loss at epoch 6 and stopped at epoch 11.
 
 ConvNeXt achieved higher validation accuracy and lower validation loss than the baseline, although these improvements did not translate into a similarly large advantage in final patient-level test balanced accuracy.
+
+### 5.3 Pretrained ConvNeXt-Tiny
+
+![Pretrained ConvNeXt training accuracy](figures/pretrained/accuracy_curve.png)
+
+![Pretrained ConvNeXt training loss](figures/pretrained/loss_curve.png)
+
+The pretrained model achieved its lowest validation loss in epoch 1.
+Subsequent reductions in training loss did not improve the validation-loss
+checkpoint-selection criterion. Early stopping occurred at epoch 6.
 
 ## 6. Evaluation Methodology
 
@@ -285,9 +342,10 @@ Thresholds between 0.05 and 0.95 were evaluated in increments of 0.01, with the 
 | Model | Selected threshold |
 |---|---:|
 | Baseline CNN | 0.78 |
-| ConvNeXt-Tiny | 0.45 |
+| ConvNeXt-Tiny (scratch) | 0.45 |
+| ConvNeXt-Tiny (pretrained) | 0.64 |
 
-The selected thresholds were frozen before the held-out test evaluation.
+All thresholds were selected using validation patient predictions. The supplementary pretrained ConvNeXt threshold of 0.64 maximised validation patient-level balanced accuracy and was frozen before that model's test evaluation. The test cohort had previously been examined during the original experiments.
 
 ![Baseline threshold analysis](figures/thresholds/baseline_threshold_analysis.png)
 
@@ -391,6 +449,10 @@ Because the validation set contains only 102 patients, the selected classificati
 
 ### 7.5 Statistical Uncertainty and Per-Class Performance
 
+The following bootstrap analysis compares the **original baseline CNN
+and scratch-trained ConvNeXt only**. It does not estimate confidence
+intervals for the supplementary pretrained model.
+
 To account for the relatively small held-out test cohort (102 patients: 69 NC and 33 AD), statistical uncertainty was estimated using 5,000 stratified patient-level bootstrap resamples with random seed 42.
 
 Resampling was performed at the patient level rather than the MRI-slice level. The original NC/AD class counts were preserved, and identical resampled patients were used for both architectures to support paired comparisons. The classification thresholds selected during validation remained fixed throughout the analysis.
@@ -420,6 +482,60 @@ These results suggest that the architectures differ more substantially in their 
 
 The confidence intervals quantify sampling uncertainty under the observed patient cohort and class composition. They do not account for variation due to random training initialisation, different dataset partitions, threshold instability or external clinical populations. Therefore, they should not be interpreted as proof of model equivalence or clinical reliability.
 
+### 7.6 Additional Pretrained ConvNeXt Experiment
+
+The ImageNet-pretrained ConvNeXt exceeded the specified 80% test-accuracy
+target. The following table compares all three model configurations
+using each configuration's validation-selected patient-level threshold.
+
+| Metric | Baseline CNN | Scratch ConvNeXt | Pretrained ConvNeXt |
+|---|---:|---:|---:|
+| Selected threshold | 0.78 | 0.45 | 0.64 |
+| Patient accuracy | 74.51% | 67.65% | **86.27%** |
+| Balanced accuracy | 70.88% | 70.55% | **81.95%** |
+| AD sensitivity | 60.61% | **78.79%** | 69.70% |
+| NC specificity | 81.16% | 62.32% | **94.20%** |
+| AD precision | 60.61% | 50.00% | **85.19%** |
+| AD F1 score | 60.61% | 61.18% | **76.67%** |
+| AUROC | 0.8186 | 0.8046 | **0.9262** |
+| Brier score (lower is better) | 0.2732 | 0.1778 | **0.1053** |
+| True negatives | 56 | 43 | **65** |
+| False positives | 13 | 26 | **4** |
+| False negatives | 13 | **7** | 10 |
+| True positives | 20 | 26 | 23 |
+
+![Three-model patient-level test accuracy](figures/pretrained_comparison/patient_accuracy.png)
+
+![Pretrained patient confusion matrix](figures/pretrained/patient_selected_confusion_matrix.png)
+
+![Pretrained patient ROC curve](figures/pretrained/patient_roc_curve.png)
+
+At its selected threshold of 0.64, pretrained ConvNeXt classified 88
+of 102 patients correctly. It achieved 84.17% slice-level test accuracy
+at the default slice threshold of 0.50.
+
+On the validation cohort, the pretrained configuration achieved 94.12%
+patient accuracy and 93.28% balanced accuracy at threshold 0.64.
+Its test balanced accuracy decreased to 81.95%, a reduction of
+approximately 11.33 percentage points.
+
+At the default patient threshold of 0.50, the pretrained model obtained
+85.29% accuracy, 83.60% balanced accuracy, 78.79% AD sensitivity and
+88.41% NC specificity. At the validation-selected threshold of 0.64,
+accuracy increased to 86.27% but AD sensitivity decreased to 69.70%.
+These are two predefined operating-point evaluations; the default
+threshold is reported for comparison, not retrospectively selected
+as a replacement after observing test performance.
+
+The pretrained configuration improved patient-level discrimination,
+overall accuracy and Brier score relative to both original models.
+However, it did not achieve the highest AD sensitivity among the three
+selected-threshold configurations.
+
+These are supplementary results obtained using the same previously
+examined test patients. They do not constitute independent external
+validation or a controlled estimate of the causal benefit of pretraining.
+
 ## 8. Prediction Confidence and Calibration
 
 The Brier score measures the mean squared difference between predicted probabilities and binary ground-truth outcomes. Lower scores indicate more accurate probability predictions.
@@ -429,11 +545,17 @@ At the patient level:
 - Baseline CNN: 0.2732
 - ConvNeXt-Tiny: 0.1778
 
-ConvNeXt produced substantially better patient-level Brier scores despite achieving similar patient-level AUROC and balanced accuracy.
+In the original scratch-trained comparison, ConvNeXt produced substantially better patient-level Brier scores despite achieving similar patient-level AUROC and balanced accuracy.
 
 This distinction is important: classification performance at a chosen threshold and probability quality are different properties.
 
 Changing the classification threshold alters sensitivity, specificity and related decision metrics, but it does not change the probabilities themselves or their Brier score.
+
+The supplementary pretrained ConvNeXt achieved a patient-level Brier
+score of **0.1053**, compared with 0.1778 for scratch-trained ConvNeXt
+and 0.2732 for the baseline. These results indicate better probability
+prediction quality on the evaluated cohort, not guaranteed reliability
+for every patient.
 
 #### Slice-level calibration figures
 
@@ -582,6 +704,13 @@ The original raw-margin policy remains the primary reject-option experiment. The
 | Approximate epoch duration | 94 s | 137 s |
 | Measured test inference latency | 0.3262 ms/image | 1.5023 ms/image |
 
+The pretrained ConvNeXt used the same 27,821,666-parameter architecture
+as scratch-trained ConvNeXt. Its measured peak allocated GPU memory was
+1.33 GiB, first-epoch duration was approximately 124.1 seconds, and
+test inference latency was approximately 1.4259 ms/image. These are
+measurements of the configurations tested, not repeated controlled
+hardware benchmarks.
+
 ConvNeXt contains approximately 23.7 times as many parameters as the baseline.
 
 The baseline was faster under the tested inference configurations and required fewer parameters.
@@ -692,21 +821,68 @@ Finally, these examples are deliberately selected high-confidence errors rather 
 
 The original MRI images are not reproduced in this public repository because redistribution permission has not been established.
 
+### 10.6 Supplementary Patient-Level Error Analysis: Pretrained ConvNeXt
+
+The ImageNet-pretrained ConvNeXt achieved 86.27% patient-level test accuracy at the validation-selected threshold of 0.64, exceeding the assignment's 80% target. However, it misclassified 14 of the 102 test patients: four false positives and ten false negatives.
+
+The four false positives had a mean predicted AD probability of 0.8027 and a mean decision margin of 0.1627. The ten false negatives had a mean predicted AD probability of 0.3762 and a mean margin of 0.2638. Notably, nine of the ten false negatives had margins of at least 0.10, demonstrating that many incorrect predictions were not close to the selected decision boundary.
+
+**Five representative patient-level failure cases**
+
+The following cases were selected retrospectively to illustrate different failure patterns. Probabilities are patient-level averages across MRI slices. The respective classification thresholds are 0.78 for the baseline CNN, 0.45 for scratch-trained ConvNeXt and 0.64 for pretrained ConvNeXt.
+
+| Case | True class | Baseline P(AD) | Scratch P(AD) | Pretrained P(AD) |
+|---|---|---:|---:|---:|
+| 1 | NC | 0.6163 | 0.5712 | 0.9200 |
+| 2 | NC | 0.8467 | 0.8194 | 0.8926 |
+| 3 | AD | 0.8620 | 0.6512 | 0.2029 |
+| 4 | AD | 0.5543 | 0.1737 | 0.2371 |
+| 5 | AD | 0.8854 | 0.4236 | 0.5668 |
+
+**Case 1 — False positive introduced relative to the baseline.** The baseline correctly classified this NC patient, while both ConvNeXt configurations incorrectly classified the patient as AD. The pretrained model assigned P(AD) = 0.9200, demonstrating that improved aggregate performance does not prevent strongly incorrect individual predictions.
+
+**Case 2 — False positive shared by all three models.** Every configuration incorrectly classified this NC patient as AD. This suggests a persistent classification difficulty across the tested architectures, although its underlying anatomical or imaging cause remains undetermined.
+
+**Case 3 — False negative in the pretrained configuration.** Both earlier models correctly identified this AD patient, whereas pretrained ConvNeXt assigned P(AD) = 0.2029. This illustrates that the pretrained configuration did not uniformly improve individual predictions.
+
+**Case 4 — False negative shared by all three models.** All three configurations classified this AD patient as NC. The pretrained model's P(AD) = 0.2371 was substantially below its threshold, showing that an incorrect classification can occur far from the decision boundary.
+
+**Case 5 — Threshold-dependent false negative.** The pretrained model assigned P(AD) = 0.5668. This patient would have been correctly classified at the default threshold of 0.50 but was classified as NC at the validation-selected threshold of 0.64. This illustrates how a decision threshold can alter the sensitivity–specificity trade-off even when the underlying model probabilities remain unchanged.
+
+Across the complete test cohort, the pretrained model's selected threshold reduced false positives from eight to four compared with the default 0.50 threshold, but increased false negatives from seven to ten. Patient accuracy increased from 85.29% to 86.27%, while AD sensitivity decreased from 78.79% to 69.70%.
+
+The error-overlap audit identified ten misclassifications shared with the baseline CNN and seven shared with scratch-trained ConvNeXt. These overlaps establish recurring errors across configurations, but do not demonstrate a common anatomical cause.
+
+**Engineering implications.** The pretrained configuration provides stronger overall accuracy, discrimination and probability quality than the original experiments. However, its remaining false negatives highlight the limitations of using aggregate accuracy or distance from a classification threshold as a measure of individual-patient reliability. Further validation and human oversight would be necessary before considering clinical use.
+
+This supplementary analysis was conducted retrospectively using the previously examined test cohort. It is exploratory rather than independent external validation. No clinical assessment or formal anatomical attribution was performed, and the original MRI images are not redistributed.
+
 ## 11. Discussion
 
 ### 11.1 Does ConvNeXt outperform the baseline?
 
-ConvNeXt achieved higher slice-level accuracy, better patient-level probability prediction according to the Brier score, and higher patient sensitivity at its selected threshold.
+The original scratch-trained ConvNeXt did not establish a meaningful
+advantage over the baseline in patient-level balanced accuracy, despite
+its higher AD sensitivity and better Brier score.
 
-However, it did not achieve a meaningful advantage in selected-threshold patient balanced accuracy on the held-out test cohort.
+The supplementary pretrained ConvNeXt achieved substantially higher
+patient-level test accuracy (86.27%) and balanced accuracy (81.95%)
+than either original model. It also achieved the strongest AUROC
+(0.9262) and lowest Brier score (0.1053).
 
-The baseline produced comparable balanced accuracy with substantially fewer parameters.
+However, the pretrained model's AD sensitivity at its validation-selected
+threshold was 69.70%, below the scratch-trained model's 78.79%.
+Thus, the additional experiment improves the overall performance
+assessment but does not eliminate the clinical sensitivity trade-off.
 
-Consequently, the evidence does not support a general claim that the larger ConvNeXt architecture is superior across all evaluation criteria.
+The pretrained configuration is the stronger general-purpose research
+candidate in this experiment. Its improvement is associated with a
+combination of pretrained initialisation and a different learning rate,
+so the contribution of each factor was not isolated.
 
 ### 11.2 Why did validation results not generalise?
 
-Both models experienced large validation-to-test performance decreases.
+Both original scratch-trained models experienced large validation-to-test performance decreases. The pretrained configuration also declined from 93.28% validation balanced accuracy to 81.95% on test patients.
 
 Although patient-independent splitting eliminated identified patient overlap between partitions, the models still needed to generalise across different patient characteristics.
 
@@ -732,7 +908,7 @@ The primary limitations include:
 4. No independent external-dataset evaluation.
 5. Uncontrolled differences in batch size between architecture benchmarks.
 6. Bootstrap confidence intervals quantify sampling uncertainty but do not account for training-seed variability, threshold-selection uncertainty, or differences between independent clinical cohorts.
-7. Models trained from scratch, without assessing the potential contribution of pretrained representations.
+7. An additional pretrained model was evaluated, but pretraining was not isolated from other configuration changes, and multiple training seeds were not tested.
 8. Selective classification was evaluated retrospectively using the existing held-out test cohort. No independent external validation was performed for the rejection policies.
 9. Decision-margin-based uncertainty does not guarantee correct predictions: both architectures retained high-confidence errors after selective classification.
 
@@ -758,17 +934,35 @@ Based on the observed results, future work should prioritise:
 
 ### 12.1 Recommendation to the Project Manager
 
-**Recommendation: Do not deploy either model for autonomous Alzheimer's Disease diagnosis. Continue development as a research prototype with mandatory human oversight.**
+**Recommendation: Retain ImageNet-pretrained ConvNeXt as the leading
+research prototype, but do not deploy it for autonomous Alzheimer's
+Disease diagnosis. Human oversight and independent validation remain
+necessary.**
 
-Neither architecture achieved the specified 80% whole-test classification accuracy target. Although selective classification improved performance on accepted patients, both systems retained substantial errors, including false negatives.
+The additional pretrained configuration exceeded the project's 80%
+test-accuracy target, reaching 86.27% patient accuracy and 81.95%
+balanced accuracy. It also provided better AUROC and probability
+quality than the original baseline and scratch-trained ConvNeXt.
 
-The baseline CNN offers advantages in computational efficiency, selected-threshold specificity and selective accuracy. However, its sensitivity is lower, and its rejection policy referred substantially more patients than the intended validation coverage target.
+Nevertheless, at the validation-selected threshold of 0.64, it missed
+10 of 33 AD patients. Although only four NC patients were incorrectly
+flagged as AD, this sensitivity–specificity balance may be unsuitable
+for a screening workflow in which missing AD cases is costly.
 
-ConvNeXt-Tiny offers better patient-level Brier scores and higher AD sensitivity at its selected classification and rejection thresholds. However, its additional computational cost did not provide a clear improvement in overall patient-level balanced accuracy, and it produced more false positives.
+The default threshold of 0.50 produced fewer AD false negatives but
+more false positives. This alternative is included to illustrate the
+operational trade-off, not selected after reviewing the test results.
 
-If the prototype were developed further for a screening-oriented research workflow, ConvNeXt would be a reasonable candidate to investigate because of its higher observed sensitivity and better probability prediction quality. Nevertheless, these advantages are insufficient to justify autonomous clinical decisions.
+A future screening-oriented system should establish acceptable
+false-negative and referral rates prospectively, select its decision
+policy on development data, and evaluate the frozen policy on an
+independent cohort. Confidence-based referral requires additional
+validation because high-margin errors remain possible.
 
-Before considering deployment, the project should investigate improved calibration, clinically informed operating thresholds, external validation, model stability and a prospective human-review workflow. Rejected predictions should receive expert assessment, and accepted predictions should not be interpreted as independently verified diagnoses.
+The baseline CNN remains useful where computational efficiency is
+prioritised, but the pretrained ConvNeXt is the stronger candidate
+for further controlled research. None of the present models has been
+validated as an autonomous clinical diagnostic system.
 
 ## 13. Reproducibility
 
@@ -958,19 +1152,123 @@ All three analyses reuse saved patient-level prediction CSVs and do not require 
 
 The output directories contain aggregate evaluation metrics and figures. Patient-specific prediction CSVs and trained model checkpoints remain excluded from version control.
 
+### 13.10 Pretrained ConvNeXt Reproduction and Automated Tests
+
+The additional experiment used the existing patient-independent
+`split.json` assignments (stored locally as `splits.json`) and the same
+authorised ADNI source as the original experiments.
+
+Train the pretrained model:
+
+```bash
+python train.py \
+  --model convnext \
+  --pretrained \
+  --epochs 20 \
+  --batch-size 16 \
+  --lr 0.00003 \
+  --weight-decay 0.0001 \
+  --patience 5 \
+  --workers 1 \
+  --output-dir outputs/pretrained_trial
+```
+
+Produce pretrained validation predictions:
+
+```bash
+python predict.py \
+  --checkpoint outputs/pretrained_trial/convnext/best_model.pth \
+  --split val \
+  --batch-size 16 \
+  --workers 1 \
+  --output-dir outputs/pretrained_trial
+```
+
+Use original baseline validation predictions and pretrained ConvNeXt
+validation predictions to select thresholds in an isolated output
+directory:
+
+```bash
+mkdir -p outputs/pretrained_trial/threshold_inputs/baseline/val
+mkdir -p outputs/pretrained_trial/threshold_inputs/convnext/val
+
+cp outputs/baseline/val/patient_predictions.csv \
+  outputs/pretrained_trial/threshold_inputs/baseline/val/
+
+cp outputs/pretrained_trial/convnext/val/patient_predictions.csv \
+  outputs/pretrained_trial/threshold_inputs/convnext/val/
+
+python threshold_analysis.py \
+  --input-dir outputs/pretrained_trial/threshold_inputs \
+  --output-dir outputs/pretrained_trial/threshold_analysis
+```
+
+Evaluate the frozen pretrained configuration:
+
+```bash
+python predict.py \
+  --checkpoint outputs/pretrained_trial/convnext/best_model.pth \
+  --split test \
+  --batch-size 16 \
+  --workers 1 \
+  --threshold-file outputs/pretrained_trial/threshold_analysis/selected_thresholds.json \
+  --output-dir outputs/pretrained_trial
+```
+
+The expected validation-selected ConvNeXt threshold is 0.64.
+Exact numerical reproduction may depend on the pretrained weight
+revision, CUDA environment and nondeterministic GPU operations.
+The experiment used `timm==1.0.30`, PyTorch `2.5.1+cu121` and
+torchvision `0.20.1+cu121`. The downloaded pretrained weight
+revision was not independently pinned.
+
+CPU-only automated tests are provided in `tests/test_pipeline.py`.
+They cover deterministic patient splitting, leakage safeguards,
+patient-level aggregation, metrics, threshold handling and synthetic
+image inference. Run:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+All 11 tests passed in the documented project environment.
+The integration test uses synthetic images rather than redistributed
+ADNI data. These tests do not replace a full fresh-environment GPU
+retraining audit.
+
+The original scratch-model experiments, bootstrap results and
+reject-option analysis remain separate from this supplementary
+pretrained comparison. Checkpoints, patient-specific predictions and
+split manifests are Git-ignored.
+
 ## 14. Conclusion
 
-This project compared a custom baseline CNN with ConvNeXt-Tiny for Alzheimer's Disease classification using patient-independent ADNI MRI partitions.
+This project evaluated a baseline CNN, scratch-trained ConvNeXt-Tiny
+and a supplementary ImageNet-pretrained ConvNeXt-Tiny using
+patient-independent ADNI MRI partitions.
 
-Although ConvNeXt achieved higher slice-level accuracy and better patient-level Brier scores, the two architectures achieved nearly identical held-out patient balanced accuracy after validation-based threshold selection: 70.88% for the baseline and 70.55% for ConvNeXt.
+The original scratch-trained ConvNeXt provided no clear advantage over
+the baseline in held-out patient balanced accuracy. The pretrained
+configuration achieved 86.27% patient test accuracy, exceeding the
+specified 80% target, and improved AUROC and Brier score compared
+with both original models.
 
-The baseline used approximately 23.7 times fewer parameters, but ConvNeXt detected more AD patients at the selected operating threshold.
+The higher accuracy did not eliminate clinically important errors.
+At the validation-selected operating threshold, the pretrained model
+incorrectly classified 10 of 33 AD patients. The additional
+patient-level case analysis also revealed high-margin false negatives
+and errors shared across model configurations.
 
-The substantial validation-to-test performance decreases in both models emphasise the importance of independent patient-level evaluation, careful threshold selection and cautious interpretation of model confidence.
+These findings support pretrained ConvNeXt as a stronger candidate
+for further research, while emphasising that classification accuracy,
+probability quality and dependable uncertainty estimates are distinct
+properties. External validation and clinically informed decision
+policies would be necessary before considering deployment.
 
-The selective classification experiments further demonstrated that referring uncertain patients for review can improve accuracy among automatically classified cases. However, the gains were accompanied by reduced coverage, unequal class-specific trade-offs and persistent high-confidence errors. Together with the statistical confidence intervals, these findings suggest that ConvNeXt's additional architectural complexity does not establish a clear overall advantage over the baseline in the present setting, and neither model is suitable for autonomous clinical use.
-
-Overall, the findings demonstrate that greater architectural complexity does not automatically improve held-out classification performance and that accuracy, probability quality and computational efficiency should be assessed separately.
+The pretrained experiment reused a test cohort previously examined
+during the original investigation. Its results are therefore reported
+as supplementary retrospective evidence rather than independent
+external confirmation.
 
 ## 15. Artificial Intelligence Usage Disclosure
 
@@ -984,8 +1282,33 @@ ChatGPT (OpenAI) was used throughout this project as a development and documenta
 - **Selective classification:** Assisting with the implementation and evaluation of validation-selected rejection policies, risk–coverage analysis and confidence-ranking sensitivity experiments.
 - **Statistical analysis:** Assisting with the implementation of patient-level bootstrap confidence intervals, paired model comparisons and per-class evaluation metrics.
 
+AI assistance also supported the additional pretrained experiment, synthetic-data unit/integration tests, retrospective failure-case comparison and revision of the final research documentation.
+
 AI-generated suggestions were reviewed against the implemented code and available experimental results. Training and evaluation were executed on the UQ Rangpur computing cluster, and numerical results were obtained from the saved experiment outputs rather than generated by AI.
 
 Qualitative error analysis was informed by inspection of the generated MRI misclassification figures. Interpretations were limited to observable results and did not assume unsupported clinical explanations.
 
 The author remains responsible for the final implementation, experimental methodology, verification, results and submitted documentation.
+
+
+## 16. References
+
+1. Z. Liu, H. Mao, C.-Y. Wu, C. Feichtenhofer, T. Darrell,
+   and S. Xie, "A ConvNet for the 2020s," *Proceedings of
+   the IEEE/CVF Conference on Computer Vision and Pattern
+   Recognition*, 2022.
+   https://openaccess.thecvf.com/content/CVPR2022/html/Liu_A_ConvNet_for_the_2020s_CVPR_2022_paper.html
+
+2. J. Wen et al., "Convolutional neural networks for classification
+   of Alzheimer's disease: Overview and reproducible evaluation,"
+   *Medical Image Analysis*, vol. 63, article 101694, 2020.
+   https://doi.org/10.1016/j.media.2020.101694
+
+3. S. G. Mueller et al., "The Alzheimer's disease neuroimaging
+   initiative," *Neuroimaging Clinics of North America*, vol. 15,
+   no. 4, pp. 869–877, 2005.
+   https://doi.org/10.1016/j.nic.2005.09.008
+
+These references provide background for ConvNeXt architecture,
+ADNI, and methodological concerns relating to participant leakage
+and reproducible neuroimaging evaluation.
