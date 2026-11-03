@@ -150,7 +150,7 @@ If computational or implementation constraints arise:
 
 ### 3.1 Dataset
 
-The project uses the ADNI structural brain MRI dataset provided through the UQ Rangpur computing cluster.
+The project uses the ADNI structural brain MRI dataset provided through the UQ Rangpur computing cluster. The ADNI initiative is described by Mueller et al. [3].
 
 Dataset location:
 
@@ -165,6 +165,8 @@ An initial audit identified 1,076 unique training scans and 450 unique testing s
 Although no scan identifiers overlapped, **216 patient identifiers appeared in both partitions**.
 
 This is important because MRI slices and scans from the same patient may share anatomical characteristics. A model evaluated on images from previously encountered patients may appear to generalise better than it actually does.
+
+Previous work has highlighted the importance of leakage prevention and reproducibility in Alzheimer's MRI classification [2].
 
 To prevent this form of leakage, the project generated new partitions using patient identifiers as the grouping unit. Each patient was assigned exclusively to training, validation or testing.
 
@@ -214,7 +216,7 @@ The baseline provides a comparison against a more computationally demanding arch
 
 ### 4.3 ConvNeXt-Tiny
 
-ConvNeXt-Tiny was implemented using the `timm` library with a classification head for the two target classes.
+ConvNeXt-Tiny was implemented using the `timm` library with a classification head for the two target classes. Its architecture follows Liu et al. [1].
 
 **Total parameters:** 27,821,666.
 
@@ -275,7 +277,7 @@ as the original investigation.
 | Best checkpoint epoch | 1 |
 | Stopped at epoch | 6 |
 | Best validation loss | 0.3115 |
-| Approximate first-epoch duration | 124.1 s |
+| First-epoch duration | 124.1 s |
 | Peak allocated GPU memory | 1.33 GiB |
 
 The best checkpoint was selected using validation loss, rather than
@@ -986,7 +988,11 @@ ConvNeXt_Edan/
 │   ├── convnext/
 │   ├── thresholds/
 │   ├── reject_option/
-│   └── ranking_sensitivity/
+│   ├── ranking_sensitivity/
+│   ├── pretrained/
+│   └── pretrained_comparison/
+├── tests/
+│   └── test_pipeline.py
 ├── splits.json                 # Git-ignored
 └── outputs/                    # Git-ignored
 ```
@@ -1155,7 +1161,7 @@ The output directories contain aggregate evaluation metrics and figures. Patient
 ### 13.10 Pretrained ConvNeXt Reproduction and Automated Tests
 
 The additional experiment used the existing patient-independent
-`split.json` assignments (stored locally as `splits.json`) and the same
+`splits.json` assignments and the same
 authorised ADNI source as the original experiments.
 
 Train the pretrained model:
